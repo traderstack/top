@@ -1,19 +1,19 @@
 // Market registry: routes every symbol to its data provider and keeps live prices.
 import * as binance from './binance.js';
 import * as forex from './forex.js';
-import * as angel from './angel.js';
+import * as kite from './kite.js';
 import { Emitter, store } from '../util.js';
 
 export const MARKETS = {
   nse: {
-    id: 'nse', label: 'NSE', ccy: 'INR', provider: angel, intQty: true,
-    align: angel.align, search: (q) => angel.search(q, 'NSE'),
-    note: 'Live via Angel One SmartAPI',
+    id: 'nse', label: 'NSE', ccy: 'INR', provider: kite, intQty: true,
+    align: kite.align, search: (q) => kite.search(q, 'NSE'),
+    note: 'Live via Zerodha Kite Connect',
   },
   bse: {
-    id: 'bse', label: 'BSE', ccy: 'INR', provider: angel, intQty: true,
-    align: angel.align, search: (q) => angel.search(q, 'BSE'),
-    note: 'Live via Angel One SmartAPI',
+    id: 'bse', label: 'BSE', ccy: 'INR', provider: kite, intQty: true,
+    align: kite.align, search: (q) => kite.search(q, 'BSE'),
+    note: 'Live via Zerodha Kite Connect',
   },
   crypto: {
     id: 'crypto', label: 'Crypto', ccy: 'USD', provider: binance, intQty: false,
@@ -27,33 +27,14 @@ export const MARKETS = {
   },
 };
 
-const nse = (ticker, token, name) => ({ market: 'nse', ticker, token, exchange: 'NSE', name: name ?? ticker.replace(/-EQ$/, '') });
-const bse = (ticker, token, name) => ({ market: 'bse', ticker, token, exchange: 'BSE', name: name ?? ticker });
+// Indian symbols use Zerodha trading symbols (src: 'kite').
+const nse = (ticker) => ({ market: 'nse', src: 'kite', ticker, exchange: 'NSE', name: ticker });
+const bse = (ticker) => ({ market: 'bse', src: 'kite', ticker, exchange: 'BSE', name: ticker });
 const cr = (ticker, name) => ({ market: 'crypto', ticker, name, quote: 'USDT' });
 
 export const DEFAULT_WATCHLISTS = {
-  nse: [
-    nse('Nifty 50', '99926000', 'NIFTY 50'),
-    nse('Nifty Bank', '99926009', 'NIFTY BANK'),
-    nse('RELIANCE-EQ', '2885'),
-    nse('HDFCBANK-EQ', '1333'),
-    nse('ICICIBANK-EQ', '4963'),
-    nse('INFY-EQ', '1594'),
-    nse('TCS-EQ', '11536'),
-    nse('SBIN-EQ', '3045'),
-    nse('ITC-EQ', '1660'),
-    nse('LT-EQ', '11483'),
-    nse('BHARTIARTL-EQ', '10604'),
-  ],
-  bse: [
-    bse('SENSEX', '99919000', 'SENSEX'),
-    bse('RELIANCE', '500325'),
-    bse('HDFCBANK', '500180'),
-    bse('ICICIBANK', '532174'),
-    bse('INFY', '500209'),
-    bse('TCS', '532540'),
-    bse('SBIN', '500112'),
-  ],
+  nse: ['NIFTY 50', 'NIFTY BANK', 'RELIANCE', 'HDFCBANK', 'ICICIBANK', 'INFY', 'TCS', 'SBIN', 'ITC', 'LT', 'BHARTIARTL'].map(nse),
+  bse: ['SENSEX', 'RELIANCE', 'HDFCBANK', 'ICICIBANK', 'INFY', 'TCS', 'SBIN'].map(bse),
   crypto: [
     cr('BTCUSDT', 'Bitcoin'), cr('ETHUSDT', 'Ethereum'), cr('SOLUSDT', 'Solana'),
     cr('BNBUSDT', 'BNB'), cr('XRPUSDT', 'XRP'), cr('DOGEUSDT', 'Dogecoin'),
@@ -82,12 +63,17 @@ export function subscribeCandles(sym, tf, onBar, onStatus, lastBar) {
 // ---------------------------------------------------------------------------
 // Watchlists (persisted per market)
 
+// Indian watchlists moved from Angel One to Zerodha symbols, so they use a new key.
+const wlKey = (market) => (market === 'nse' || market === 'bse' ? `watch.kite.${market}` : `watch.${market}`);
 export function getWatchlist(market) {
-  return store.get(`watch.${market}`, DEFAULT_WATCHLISTS[market]);
+  return store.get(wlKey(market), DEFAULT_WATCHLISTS[market]);
 }
 export function setWatchlist(market, list) {
-  store.set(`watch.${market}`, list);
+  store.set(wlKey(market), list);
 }
+
+/** True for a saved Indian symbol from before the switch to Zerodha. */
+export const isStaleIndian = (s) => (s.market === 'nse' || s.market === 'bse') && s.src !== 'kite';
 
 // ---------------------------------------------------------------------------
 // Price hub: one live subscription per symbol, shared by every component.
@@ -127,7 +113,7 @@ class PriceHub extends Emitter {
       if (cur?.key === key) continue;
       cur?.off();
       if (!wanted.size) { this.subs.delete(market); continue; }
-      if (MARKETS[market].provider === angel && !angel.isConfigured()) { this.subs.delete(market); continue; }
+      if (MARKETS[market].provider === kite && !kite.isConfigured()) { this.subs.delete(market); continue; }
       const off = MARKETS[market].provider.subscribeTickers([...wanted.values()], (sym, d) => {
         if (!isFinite(d.price)) return;
         const id = symId(sym);
