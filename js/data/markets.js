@@ -1,19 +1,19 @@
 // Market registry: routes every symbol to its data provider and keeps live prices.
 import * as binance from './binance.js';
 import * as forex from './forex.js';
-import * as kite from './kite.js';
+import * as upstox from './upstox.js';
 import { Emitter, store } from '../util.js';
 
 export const MARKETS = {
   nse: {
-    id: 'nse', label: 'NSE', ccy: 'INR', provider: kite, intQty: true,
-    align: kite.align, search: (q) => kite.search(q, 'NSE'),
-    note: 'Live via Zerodha Kite Connect',
+    id: 'nse', label: 'NSE', ccy: 'INR', provider: upstox, intQty: true,
+    align: upstox.align, search: (q) => upstox.search(q, 'NSE'),
+    note: 'Live via Upstox',
   },
   bse: {
-    id: 'bse', label: 'BSE', ccy: 'INR', provider: kite, intQty: true,
-    align: kite.align, search: (q) => kite.search(q, 'BSE'),
-    note: 'Live via Zerodha Kite Connect',
+    id: 'bse', label: 'BSE', ccy: 'INR', provider: upstox, intQty: true,
+    align: upstox.align, search: (q) => upstox.search(q, 'BSE'),
+    note: 'Live via Upstox',
   },
   crypto: {
     id: 'crypto', label: 'Crypto', ccy: 'USD', provider: binance, intQty: false,
@@ -27,14 +27,24 @@ export const MARKETS = {
   },
 };
 
-// Indian symbols use Zerodha trading symbols (src: 'kite').
-const nse = (ticker) => ({ market: 'nse', src: 'kite', ticker, exchange: 'NSE', name: ticker });
-const bse = (ticker) => ({ market: 'bse', src: 'kite', ticker, exchange: 'BSE', name: ticker });
+// Indian symbols carry their Upstox instrument key (ISIN-based for stocks).
+const ISIN = {
+  RELIANCE: 'INE002A01018', HDFCBANK: 'INE040A01034', ICICIBANK: 'INE090A01021', INFY: 'INE009A01021',
+  TCS: 'INE467B01029', SBIN: 'INE062A01020', ITC: 'INE154A01025', LT: 'INE018A01030', BHARTIARTL: 'INE397D01024',
+};
+const eq = (exchange) => (ticker) => ({ market: exchange.toLowerCase(), src: 'upstox', exchange, ticker, name: ticker, key: `${exchange}_EQ|${ISIN[ticker]}` });
+const idx = (exchange, ticker, name) => ({ market: exchange.toLowerCase(), src: 'upstox', exchange, ticker, name: ticker, key: `${exchange}_INDEX|${name}` });
 const cr = (ticker, name) => ({ market: 'crypto', ticker, name, quote: 'USDT' });
 
 export const DEFAULT_WATCHLISTS = {
-  nse: ['NIFTY 50', 'NIFTY BANK', 'RELIANCE', 'HDFCBANK', 'ICICIBANK', 'INFY', 'TCS', 'SBIN', 'ITC', 'LT', 'BHARTIARTL'].map(nse),
-  bse: ['SENSEX', 'RELIANCE', 'HDFCBANK', 'ICICIBANK', 'INFY', 'TCS', 'SBIN'].map(bse),
+  nse: [
+    idx('NSE', 'NIFTY 50', 'Nifty 50'), idx('NSE', 'NIFTY BANK', 'Nifty Bank'),
+    ...['RELIANCE', 'HDFCBANK', 'ICICIBANK', 'INFY', 'TCS', 'SBIN', 'ITC', 'LT', 'BHARTIARTL'].map(eq('NSE')),
+  ],
+  bse: [
+    idx('BSE', 'SENSEX', 'SENSEX'),
+    ...['RELIANCE', 'HDFCBANK', 'ICICIBANK', 'INFY', 'TCS', 'SBIN'].map(eq('BSE')),
+  ],
   crypto: [
     cr('BTCUSDT', 'Bitcoin'), cr('ETHUSDT', 'Ethereum'), cr('SOLUSDT', 'Solana'),
     cr('BNBUSDT', 'BNB'), cr('XRPUSDT', 'XRP'), cr('DOGEUSDT', 'Dogecoin'),
@@ -63,8 +73,8 @@ export function subscribeCandles(sym, tf, onBar, onStatus, lastBar) {
 // ---------------------------------------------------------------------------
 // Watchlists (persisted per market)
 
-// Indian watchlists moved from Angel One to Zerodha symbols, so they use a new key.
-const wlKey = (market) => (market === 'nse' || market === 'bse' ? `watch.kite.${market}` : `watch.${market}`);
+// Indian watchlists hold Upstox instrument keys, so they use their own storage key.
+const wlKey = (market) => (market === 'nse' || market === 'bse' ? `watch.upstox.${market}` : `watch.${market}`);
 export function getWatchlist(market) {
   return store.get(wlKey(market), DEFAULT_WATCHLISTS[market]);
 }
@@ -72,8 +82,8 @@ export function setWatchlist(market, list) {
   store.set(wlKey(market), list);
 }
 
-/** True for a saved Indian symbol from before the switch to Zerodha. */
-export const isStaleIndian = (s) => (s.market === 'nse' || s.market === 'bse') && s.src !== 'kite';
+/** True for a saved Indian symbol from an earlier data source. */
+export const isStaleIndian = (s) => (s.market === 'nse' || s.market === 'bse') && s.src !== 'upstox';
 
 // ---------------------------------------------------------------------------
 // Price hub: one live subscription per symbol, shared by every component.
@@ -113,7 +123,7 @@ class PriceHub extends Emitter {
       if (cur?.key === key) continue;
       cur?.off();
       if (!wanted.size) { this.subs.delete(market); continue; }
-      if (MARKETS[market].provider === kite && !kite.isConfigured()) { this.subs.delete(market); continue; }
+      if (MARKETS[market].provider === upstox && !upstox.isConfigured()) { this.subs.delete(market); continue; }
       const off = MARKETS[market].provider.subscribeTickers([...wanted.values()], (sym, d) => {
         if (!isFinite(d.price)) return;
         const id = symId(sym);

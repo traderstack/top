@@ -1,23 +1,23 @@
-// NSE / BSE market data from Zerodha Kite Connect.
+// NSE / BSE market data from the Upstox API.
 //
-// Your Kite API secret and daily access token never reach the browser. They live
-// in Supabase: the `kite-callback` function handles the daily Zerodha login and
-// stores the token privately, and the `kite` function serves candles, quotes and
-// search to callers that send your private access key. Live prices are polled
-// every few seconds, so the access token (which can place orders) stays on the server.
+// Your Upstox API secret and daily access token never reach the browser. They live
+// in Supabase: the `upstox-callback` function handles the daily Upstox login and
+// stores the token privately, and the `upstox` function serves candles and quotes to
+// callers that send your private access key. Live prices are polled every few
+// seconds, so the access token (which can place orders) stays on the server.
 import { aggregate, bucketStart, tfSec } from '../timeframes.js';
 import { Emitter, store } from '../util.js';
 
 export const timeframes = ['1m', '5m', '15m', '1h', '4h', '1D', '1W'];
 
 const PLAN = {
-  '1m': { interval: 'minute', days: 30 },
-  '5m': { interval: '5minute', days: 95 },
-  '15m': { interval: '15minute', days: 190 },
-  '1h': { interval: '60minute', days: 390 },
-  '4h': { interval: '60minute', days: 390, agg: 14400 },
-  '1D': { interval: 'day', days: 1990 },
-  '1W': { interval: 'day', days: 1990, agg: 604800 },
+  '1m': { unit: 'minutes', interval: 1, days: 25 },
+  '5m': { unit: 'minutes', interval: 5, days: 85 },
+  '15m': { unit: 'minutes', interval: 15, days: 170 },
+  '1h': { unit: 'hours', interval: 1, days: 360 },
+  '4h': { unit: 'hours', interval: 1, days: 360, agg: 14400 },
+  '1D': { unit: 'days', interval: 1, days: 1825 },
+  '1W': { unit: 'weeks', interval: 1, days: 3650 },
 };
 
 const POLL_MS = 3000;
@@ -32,20 +32,20 @@ export function align(sec) {
 // Public endpoints of the TraderStack backend. The ACCESS_KEY is what protects them.
 const PROJECT = 'https://jdhqomlblzzrctuntvik.supabase.co/functions/v1';
 const DEFAULT_ANON = 'sb_publishable_gFFbgzD8Ps_0ALgUpCl9Cw_LmMie46y';
-export const LOGIN_URL = `${PROJECT}/kite-callback`;
+export const LOGIN_URL = `${PROJECT}/upstox-callback`;
 
 export function getConfig() {
-  const c = store.get('kite', {});
-  return { url: c.url || `${PROJECT}/kite`, anonKey: c.anonKey || DEFAULT_ANON, accessKey: c.accessKey || '' };
+  const c = store.get('upstox', {});
+  return { url: c.url || `${PROJECT}/upstox`, anonKey: c.anonKey || DEFAULT_ANON, accessKey: c.accessKey || '' };
 }
 export function setConfig(cfg) {
-  store.set('kite', cfg);
-  status.needsLogin = false;
+  store.set('upstox', cfg);
+  status.set(false);
   poller?.restart();
 }
 export const isConfigured = () => !!getConfig().accessKey;
 
-/** Session state shared with the UI ("needs-login" when Zerodha's daily session ends). */
+/** Session state shared with the UI: needsLogin turns true when the daily Upstox session ends. */
 export const status = new (class extends Emitter {
   needsLogin = false;
   set(v) {
@@ -67,53 +67,69 @@ export async function call(action, payload = {}) {
   const json = await res.json().catch(() => ({}));
   if (json.needsLogin) status.set(true);
   if (!res.ok || json.error) {
-    const err = new Error(json.error || `Zerodha backend ${res.status}`);
+    const err = new Error(json.error || `Upstox backend ${res.status}`);
     err.needsLogin = !!json.needsLogin;
     throw err;
   }
-  if (action !== 'status') status.set(false);
+  if (action === 'quote') status.set(false);
+  if (action === 'status') status.set(!json.data?.connected);
   return json.data;
 }
 
-const pad = (n) => String(n).padStart(2, '0');
-/** Kite wants "yyyy-MM-dd HH:mm:ss" in IST. */
-function istString(ms) {
-  const d = new Date(ms + 19800000);
-  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:00`;
-}
+const day = (ms) => new Date(ms + 19800000).toISOString().slice(0, 10); // IST date
 
 export async function getCandles(sym, tf) {
   const plan = PLAN[tf];
   if (!plan) throw new Error(`Timeframe ${tf} not supported`);
+  if (!sym.key) throw new Error(`No Upstox instrument key for ${sym.ticker}. Remove it and add it again from search.`);
   const now = Date.now();
   const bars = await call('candles', {
-    exchange: sym.exchange,
-    symbol: sym.ticker,
-    interval: plan.interval,
-    from: istString(now - plan.days * 86400000),
-    to: istString(now),
+    key: sym.key, unit: plan.unit, interval: plan.interval,
+    from: day(now - plan.days * 86400000), to: day(now),
   });
   return plan.agg ? aggregate(bars, plan.agg, align(plan.agg)) : bars;
 }
 
+// ---------------------------------------------------------------------------
+// Symbol search: a static list built weekly by .github/workflows/instruments.yml
+
+const lists = {};
+async function loadList(exchange) {
+  lists[exchange] ??= fetch(`data/instruments/${exchange}.json`).then((r) => {
+    if (!r.ok) throw new Error('The NSE/BSE symbol list has not been built yet. Run the "Update NSE/BSE symbol list" GitHub Action.');
+    return r.json();
+  }).then((j) => j.rows).catch((e) => { delete lists[exchange]; throw e; });
+  return lists[exchange];
+}
+
 export async function search(query, exchange) {
-  if (query.trim().length < 2) return [];
-  const rows = await call('search', { exchange, query });
-  const market = exchange.toLowerCase();
-  return rows.map((r) => ({ market, src: 'kite', ticker: r.symbol, name: r.type === 'INDEX' ? r.symbol : r.symbol, exchange: r.exchange, desc: r.name }));
+  const q = query.trim().toUpperCase();
+  if (q.length < 2) return [];
+  const rows = await loadList(exchange);
+  const score = ([sym, name, , type]) =>
+    (sym === q ? 0 : sym.startsWith(q) ? 1 : name.toUpperCase().startsWith(q) ? 2 : 3) - (type === 'INDEX' ? 0.5 : 0);
+  return rows
+    .filter(([sym, name]) => sym.includes(q) || name.toUpperCase().includes(q))
+    .sort((a, b) => score(a) - score(b) || a[0].length - b[0].length)
+    .slice(0, 30)
+    .map(([sym, name, key, type]) => ({
+      market: exchange.toLowerCase(), src: 'upstox', exchange, ticker: sym, key,
+      name: type === 'INDEX' ? name : sym, desc: name,
+    }));
 }
 
 // ---------------------------------------------------------------------------
 // Live prices: one shared poller for every subscribed instrument.
 
-class KitePoller {
+class Poller {
   constructor() {
-    this.listeners = new Map(); // "NSE:INFY" -> Set(fn)
+    this.listeners = new Map(); // instrument key -> Set(fn)
     this.timer = null;
     this.busy = false;
   }
   add(sym, fn) {
-    const k = `${sym.exchange}:${sym.ticker}`;
+    const k = sym.key;
+    if (!k) return () => {};
     if (!this.listeners.has(k)) this.listeners.set(k, new Set());
     this.listeners.get(k).add(fn);
     this.ensure();
@@ -132,13 +148,13 @@ class KitePoller {
     if (this.busy || !this.listeners.size || status.needsLogin || document.hidden) return;
     this.busy = true;
     try {
-      const quotes = await call('quote', { instruments: [...this.listeners.keys()] });
+      const quotes = await call('quote', { keys: [...this.listeners.keys()] });
       const now = Date.now();
       for (const q of quotes) {
         for (const fn of this.listeners.get(q.key) ?? []) fn({ price: q.ltp, changePct: q.changePct, ts: now });
       }
     } catch (e) {
-      console.warn('Zerodha quote poll failed:', e.message);
+      console.warn('Upstox quote poll failed:', e.message);
     } finally {
       this.busy = false;
     }
@@ -148,8 +164,8 @@ class KitePoller {
 }
 
 let poller;
-const getPoller = () => (poller ??= new KitePoller());
-status.on('change', (needs) => { if (!needs) getPoller().poll(); });
+const getPoller = () => (poller ??= new Poller());
+status.on('change', (needs) => { if (!needs) poller?.poll(); });
 
 export function subscribeTickers(syms, onTick) {
   const offs = syms.map((s) => getPoller().add(s, (d) => onTick(s, d)));
@@ -163,7 +179,7 @@ export function subscribeCandles(sym, tf, onBar, _onStatus, lastBar) {
   let cur = lastBar ? { ...lastBar } : null;
   return getPoller().add(sym, ({ price, ts }) => {
     if (!isFinite(price) || price <= 0) return;
-    // Outside market hours the last price doesn't move; don't invent new bars.
+    // Outside market hours the price doesn't move; don't invent new bars.
     if (cur && price === cur.close && Math.floor(ts / 1000) - cur.time >= sec) return;
     const t = bucketStart(Math.floor(ts / 1000), sec, al);
     if (!cur || t > cur.time) {

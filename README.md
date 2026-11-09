@@ -11,7 +11,8 @@ paper-trading terminal. Served from GitHub Pages at https://traderstack.top.
 | Charts | `js/chart.js` | TradingView Lightweight Charts v4.2.3 (Apache-2.0), vendored in `js/vendor/`. |
 | Crypto data | `js/data/binance.js` | Binance public market-data API and WebSocket. No key. |
 | Forex data | `js/data/forex.js` | ECB daily reference rates via frankfurter.app. Daily and weekly only. |
-| NSE / BSE data | `js/data/angel.js` + `supabase/functions/angel` | Angel One SmartAPI through a private Supabase Edge Function. |
+| NSE / BSE data | `js/data/upstox.js` + `supabase/functions/upstox*` | Upstox API through private Supabase Edge Functions. Live prices poll every 3 s. |
+| NSE / BSE symbols | `data/instruments/` | Built weekly from Upstox's public instrument files by `.github/workflows/instruments.yml`. |
 | Indicators | `js/ta.js` | SMA, EMA, RSI, MACD, Bollinger, ATR, Supertrend, VWAP, Donchian helpers. |
 | Backtester | `js/backtest/` | Bar-by-bar engine; signals fill at the next bar's open. |
 | Paper trading | `js/paper/broker.js` | ₹10,00,000 INR and $100,000 USD virtual accounts, market/limit/stop orders, strategy bots. Saved in the browser. |
@@ -35,27 +36,37 @@ return (i) => {
 
 `// @param name default min max step Label` lines become inputs in the tester.
 
-## Connecting Angel One (NSE / BSE)
+## Connecting Upstox (NSE / BSE)
 
-The backend runs as the `angel` Edge Function in the Supabase project
-`traderstack` (`jdhqomlblzzrctuntvik`, Mumbai). It logs in to Angel One, serves
-candles, quotes and symbol search, and gives the browser a market-data-only feed
-token for live ticks. It never places orders and never returns your session token.
+Two Edge Functions run in the Supabase project `traderstack`
+(`jdhqomlblzzrctuntvik`, Mumbai):
 
-1. In the Angel One SmartAPI portal (smartapi.angelbroking.com), create an app and
-   copy its **API key**. Enable **TOTP** for your account and keep the base32 secret
-   shown under the QR code.
+- `upstox-callback` handles the daily Upstox login and stores the access token in
+  the private `upstox_session` table (RLS on, no policies).
+- `upstox` serves candles and quotes to browsers that send your `ACCESS_KEY`. It
+  never places orders and never returns the access token.
+
+Setup:
+
+1. Create an app at account.upstox.com/developer/apps with this **Redirect URL**:
+   `https://jdhqomlblzzrctuntvik.supabase.co/functions/v1/upstox-callback`.
+   Copy its **API key** and **API secret**.
 2. In Supabase → project `traderstack` → Edge Functions → Secrets, add:
-   - `ANGEL_API_KEY` — the SmartAPI app key
-   - `ANGEL_CLIENT_CODE` — your Angel One client ID
-   - `ANGEL_MPIN` — your 4-digit MPIN
-   - `ANGEL_TOTP_SECRET` — the TOTP base32 secret
+   - `UPSTOX_API_KEY` — the app's API key
+   - `UPSTOX_API_SECRET` — the app's API secret
+   - `UPSTOX_USER_ID` — your Upstox client ID (only this account can log in)
    - `ACCESS_KEY` — a long random password you make up
-3. On the site, open **Settings**, paste the same `ACCESS_KEY` and press
-   **Test connection**.
+3. On the site, open **Settings**, paste the same `ACCESS_KEY`, press
+   **Check connection**, then **Log in with Upstox**.
+
+Upstox sessions end every night (around 3:30 AM IST), so log in once each trading
+day. Historical charts may still load without a session; live prices need one.
 
 Only browsers holding the access key can load NSE/BSE data, so exchange data from
 your account isn't shown to the public. Crypto and forex are open to everyone.
+
+In GitHub → Actions, run **Update NSE/BSE symbol list** once to build the search
+list; after that it refreshes every Monday.
 
 ## Running locally
 
