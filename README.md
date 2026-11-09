@@ -78,6 +78,15 @@ your account isn't shown to the public. Crypto and forex are open to everyone.
 In GitHub → Actions, run **Update NSE/BSE symbol list** once to build the search
 list; after that it refreshes every Monday.
 
+## Making changes
+
+- After editing anything in `js/` or `css/`, run `node scripts/stamp.mjs`. It updates
+  the version stamps in `index.html` so browsers load the new files immediately
+  instead of serving a cached copy for up to 10 minutes.
+- `.github/workflows/test.yml` runs on every pull request and push to `main`: unit
+  tests (`tests/core.test.mjs`), the stamp check, and a browser smoke test
+  (`tests/smoke.cjs`) with mocked market data.
+
 ## Running locally
 
 ```bash

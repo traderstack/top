@@ -7,6 +7,7 @@
 // seconds, so the access token (which can place orders) stays on the server.
 import { aggregate, bucketStart, tfSec } from '../timeframes.js';
 import { Emitter, store } from '../util.js';
+import { getAccessToken } from '../auth.js';
 
 export const timeframes = ['1m', '5m', '15m', '1h', '4h', '1D', '1W'];
 
@@ -43,7 +44,8 @@ export function setConfig(cfg) {
   status.set(false);
   poller?.restart();
 }
-export const isConfigured = () => !!getConfig().accessKey;
+// Signed-in, approved accounts are authorised by their session; the access key is an optional fallback.
+export const isConfigured = () => true;
 
 /** Session state shared with the UI: needsLogin turns true when the daily Upstox session ends. */
 export const status = new (class extends Emitter {
@@ -57,12 +59,12 @@ export const status = new (class extends Emitter {
 
 export async function call(action, payload = {}) {
   const cfg = getConfig();
-  if (!cfg.accessKey) throw new Error('NSE/BSE data is not connected yet. Open Settings and enter your access key.');
-  const headers = { 'Content-Type': 'application/json', 'x-access-key': cfg.accessKey };
-  if (cfg.anonKey) {
-    headers.apikey = cfg.anonKey;
-    if (cfg.anonKey.startsWith('eyJ')) headers.Authorization = `Bearer ${cfg.anonKey}`;
-  }
+  const token = await getAccessToken();
+  if (!token && !cfg.accessKey) throw new Error('Sign in to load NSE/BSE data.');
+  const headers = { 'Content-Type': 'application/json' };
+  if (cfg.anonKey) headers.apikey = cfg.anonKey;
+  if (token) headers.Authorization = `Bearer ${token}`;
+  if (cfg.accessKey) headers['x-access-key'] = cfg.accessKey;
   const res = await fetch(cfg.url, { method: 'POST', headers, body: JSON.stringify({ action, ...payload }) });
   const json = await res.json().catch(() => ({}));
   if (json.needsLogin) status.set(true);
