@@ -1,6 +1,7 @@
 // Strategy tester: edit strategy code, set parameters, backtest on the chart's data.
 import { $, h, store, uid, fmtMoney, fmtPct, fmtPrice, fmtTime, fmtQty, clsUpDown, toast, fill } from '../util.js';
 import { createChart } from '../vendor/lightweight-charts.mjs';
+import { SAFE_LOCALE } from '../chart.js';
 import { TEMPLATES, BLANK } from '../backtest/strategies.js';
 import { compileStrategy, parseParams, runBacktest } from '../backtest/engine.js';
 import { barsPerYear } from '../timeframes.js';
@@ -205,6 +206,7 @@ export function initStrategy(app) {
     const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
     equityChart = createChart(eqBox, {
       autoSize: true,
+      localization: { locale: SAFE_LOCALE },
       layout: { background: { color: css('--surface') }, textColor: css('--text-muted'), attributionLogo: false },
       grid: { vertLines: { visible: false }, horzLines: { color: css('--grid') } },
       rightPriceScale: { borderVisible: false },

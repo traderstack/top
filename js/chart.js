@@ -25,11 +25,26 @@ function cssVar(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 
-function themeOptions() {
+/**
+ * The browser's locale if Intl accepts it, else en-IN. Some browsers report
+ * values like "en_US" or "" that make the chart library's date formatting throw.
+ */
+export const SAFE_LOCALE = (() => {
+  try {
+    const l = navigator.language;
+    new Date().toLocaleString(l, { month: 'long' });
+    return l || 'en-IN';
+  } catch {
+    return 'en-IN';
+  }
+})();
+
+export function themeOptions() {
   const text = cssVar('--text-muted');
   const grid = cssVar('--grid');
   const bg = cssVar('--surface');
   return {
+    localization: { locale: SAFE_LOCALE },
     layout: { background: { color: bg }, textColor: text, fontFamily: cssVar('--font-sans'), attributionLogo: true },
     grid: { vertLines: { color: grid }, horzLines: { color: grid } },
     rightPriceScale: { borderColor: grid },

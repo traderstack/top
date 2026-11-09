@@ -36,11 +36,11 @@ const block = `${START}\n${importMap}\n${END}`;
 if (html.includes(START)) {
   html = html.replace(new RegExp(`${START}[\\s\\S]*?${END}`), block);
 } else {
-  html = html.replace('<script type="module"', `${block}\n  <script type="module"`);
+  html = html.replace('<script type="module" src="js/boot', `${block}\n  <script type="module" src="js/boot`);
 }
 html = html
   .replace(/href="css\/app\.css(\?v=[^"]*)?"/, `href="css/app.css?v=${hash('css/app.css')}"`)
-  .replace(/src="js\/main\.js(\?v=[^"]*)?"/, `src="js/main.js?v=${hash('js/main.js')}"`);
+  .replace(/src="js\/boot\.js(\?v=[^"]*)?"/, `src="js/boot.js?v=${hash('js/boot.js')}"`);
 
 if (process.argv.includes('--check')) {
   if (html !== before) {

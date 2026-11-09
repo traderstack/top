@@ -25,7 +25,16 @@ function bars(n, sec, base) {
   page.on('pageerror', (e) => errors.push(e.message));
   page.setDefaultTimeout(8000);
 
-  await page.addInitScript(() => localStorage.setItem('ts.upstox', JSON.stringify({ accessKey: 'test' })));
+  // Some browsers report a locale Intl rejects (e.g. "en_US"); the charts must cope.
+  await page.addInitScript(() => Object.defineProperty(Navigator.prototype, 'language', { get: () => 'en_US' }));
+
+  // Supabase Auth: one test account; any other password is rejected.
+  await page.route(/^https:\/\/[a-z]+\.supabase\.co\/auth\/v1\/token/, (r) => {
+    const b = r.request().postDataJSON();
+    if (b.password !== 'right-password') return r.fulfill({ status: 400, json: { error_description: 'Invalid login credentials' } });
+    r.fulfill({ json: { access_token: 'eyJtest', refresh_token: 'r', expires_in: 3600, user: { id: 'u1', email: b.email } } });
+  });
+  await page.route(/^https:\/\/[a-z]+\.supabase\.co\/rest\/v1\/app_users/, (r) => r.fulfill({ json: [{ role: 'admin' }] }));
   await page.route(/^https:\/\/data-api\.binance\.vision\/api\/v3\/klines/, (r) => {
     const u = new URL(r.request().url());
     if (u.searchParams.get('endTime')) return r.fulfill({ json: [] });
@@ -42,7 +51,19 @@ function bars(n, sec, base) {
   await page.routeWebSocket(/.*/, () => {});
 
   await page.goto(BASE);
+
+  // Sign-in screen comes first; the app stays hidden.
+  await page.waitForSelector('.login-card');
+  check(!(await page.isVisible('.topbar')), 'app is hidden until signed in');
+  await page.fill('.login-card input[type=email]', 'admin@example.com');
+  await page.fill('.login-card input[type=password]', 'wrong');
+  await page.click('.login-card button[type=submit]');
+  await page.waitForSelector('.login-msg:not([hidden])');
+  check((await page.textContent('.login-msg')).includes('Wrong email or password'), 'wrong password shows an error');
+  await page.fill('.login-card input[type=password]', 'right-password');
+  await page.click('.login-card button[type=submit]');
   await page.waitForSelector('.wl-row');
+  check(await page.isVisible('.topbar'), 'signing in opens the app');
   check((await page.locator('.wl-row').count()) > 3, 'watchlist renders');
 
   // Search: click a result with mouse movement between press and release.
@@ -64,6 +85,11 @@ function bars(n, sec, base) {
   // Backtest runs on the loaded chart.
   await page.click('text=Run backtest');
   check((await page.locator('.stat').count()) >= 8, 'backtest shows stats');
+
+  // The session survives a reload.
+  await page.reload();
+  await page.waitForSelector('.wl-row');
+  check(!(await page.isVisible('.login-card')), 'still signed in after reload');
 
   check(errors.length === 0, `no page errors${errors.length ? ': ' + errors.join(' | ') : ''}`);
   await browser.close();

@@ -2,8 +2,9 @@
 //
 // Reads the day's access token (saved by upstox-callback) from the private
 // upstox_session table and serves candles and quotes. It never places orders and
-// never returns the access token. Every request must carry the private ACCESS_KEY
-// in the x-access-key header.
+// never returns the access token. Callers must be signed in with an account listed
+// in app_users (Authorization: Bearer <session token>), or send the ACCESS_KEY in
+// the x-access-key header.
 //
 // Secrets: ACCESS_KEY, UPSTOX_ANALYTICS_TOKEN (recommended: read-only, valid ~1 year,
 // no daily login), ALLOWED_ORIGINS (optional).
@@ -145,6 +146,39 @@ async function quote(p: any) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Who may call: a signed-in account listed in app_users, or the ACCESS_KEY.
+
+const approved = new Map<string, number>(); // user JWT -> cache expiry (ms)
+
+async function isApprovedUser(jwt: string) {
+  const hit = approved.get(jwt);
+  if (hit && hit > Date.now()) return true;
+  const base = env("SUPABASE_URL");
+  const anon = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+  const userRes = await fetch(`${base}/auth/v1/user`, { headers: { apikey: anon, Authorization: `Bearer ${jwt}` } });
+  if (!userRes.ok) return false;
+  const user = await userRes.json().catch(() => null);
+  if (!user?.id) return false;
+  const service = env("SUPABASE_SERVICE_ROLE_KEY");
+  const rows = await fetch(`${base}/rest/v1/app_users?select=role&user_id=eq.${encodeURIComponent(user.id)}`, {
+    headers: { apikey: service, Authorization: `Bearer ${service}` },
+  }).then((r) => r.json()).catch(() => []);
+  if (!Array.isArray(rows) || !rows.length) return false;
+  if (approved.size > 500) approved.clear();
+  approved.set(jwt, Date.now() + 5 * 60_000);
+  return true;
+}
+
+async function authorize(req: Request) {
+  const key = req.headers.get("x-access-key") ?? "";
+  const accessKey = Deno.env.get("ACCESS_KEY") ?? "";
+  if (key && accessKey && timingSafeEqual(key, accessKey)) return;
+  const bearer = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
+  if (bearer.startsWith("eyJ") && await isApprovedUser(bearer)) return;
+  throw new HttpError(401, "Sign in with an approved account to load NSE/BSE data.");
+}
+
 function timingSafeEqual(a: string, b: string) {
   const x = new TextEncoder().encode(a);
   const y = new TextEncoder().encode(b);
@@ -161,8 +195,7 @@ Deno.serve(async (req) => {
 
   try {
     if (req.method !== "POST") throw new HttpError(405, "Use POST");
-    const key = req.headers.get("x-access-key") ?? "";
-    if (!key || !timingSafeEqual(key, env("ACCESS_KEY"))) throw new HttpError(401, "Wrong or missing access key");
+    await authorize(req);
 
     const body = await req.json().catch(() => ({}));
     switch (body.action) {

@@ -6,12 +6,13 @@
   <title>TraderStack — Charts, Backtesting &amp; Paper Trading</title>
   <meta name="description" content="Live charts for NSE, BSE, crypto and forex, with a strategy backtester and paper-trading terminal.">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230f9d76'/%3E%3Cpath d='M7 21l6-6 4 4 8-9' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="css/app.css?v=a2d92aa162">
+  <link rel="stylesheet" href="css/app.css?v=e87e87b7b6">
   <script>
     try { const t = localStorage.getItem('ts.theme'); if (t) document.documentElement.dataset.theme = JSON.parse(t); } catch {}
   </script>
 </head>
-<body>
+<body class="locked">
+  <section id="loginScreen" class="login-screen" aria-label="Sign in"></section>
   <header class="topbar">
     <a class="brand" href="./" aria-label="TraderStack home">
       <svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true"><rect width="32" height="32" rx="7" fill="var(--accent)"/><path d="M7 21l6-6 4 4 8-9" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -68,21 +69,23 @@
 <script type="importmap">
 {
   "imports": {
+    "./js/auth.js": "./js/auth.js?v=c0572f58dc",
     "./js/backtest/engine.js": "./js/backtest/engine.js?v=90ad19e090",
     "./js/backtest/strategies.js": "./js/backtest/strategies.js?v=7e331d994b",
-    "./js/chart.js": "./js/chart.js?v=df83e8978b",
+    "./js/boot.js": "./js/boot.js?v=7964117816",
+    "./js/chart.js": "./js/chart.js?v=036e4bfe4f",
     "./js/data/binance.js": "./js/data/binance.js?v=378896e8e1",
     "./js/data/forex.js": "./js/data/forex.js?v=b5967c8e89",
     "./js/data/markets.js": "./js/data/markets.js?v=2452df8a1f",
-    "./js/data/upstox.js": "./js/data/upstox.js?v=18f9723535",
+    "./js/data/upstox.js": "./js/data/upstox.js?v=aac9a24dde",
     "./js/main.js": "./js/main.js?v=0a0c864d9b",
     "./js/paper/broker.js": "./js/paper/broker.js?v=11047ff414",
     "./js/ta.js": "./js/ta.js?v=8b4661feec",
     "./js/timeframes.js": "./js/timeframes.js?v=79b28a52cf",
     "./js/ui/paper.js": "./js/ui/paper.js?v=1e72aed746",
     "./js/ui/search.js": "./js/ui/search.js?v=743654d891",
-    "./js/ui/settings.js": "./js/ui/settings.js?v=e006323e1b",
-    "./js/ui/strategy.js": "./js/ui/strategy.js?v=30a05fce37",
+    "./js/ui/settings.js": "./js/ui/settings.js?v=e11e6c35d7",
+    "./js/ui/strategy.js": "./js/ui/strategy.js?v=5605e74c75",
     "./js/ui/ticket.js": "./js/ui/ticket.js?v=004fffce9b",
     "./js/ui/watchlist.js": "./js/ui/watchlist.js?v=d59ed14e47",
     "./js/util.js": "./js/util.js?v=b572f290d1",
@@ -91,6 +94,6 @@
 }
 </script>
 <!-- /stamp:importmap -->
-  <script type="module" src="js/main.js?v=0a0c864d9b"></script>
+  <script type="module" src="js/boot.js?v=7964117816"></script>
 </body>
 </html>
