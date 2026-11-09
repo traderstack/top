@@ -81,7 +81,8 @@ async function upstox(path: string, { optionalAuth = false, retried = false } = 
 // ---------------------------------------------------------------------------
 // Actions
 
-const KEY_RE = /^(NSE|BSE)_(EQ|INDEX)\|[A-Za-z0-9 &.\-]{1,40}$/;
+const KEY_RE = /^(NSE|BSE)_(EQ|INDEX|FO)\|[A-Za-z0-9 &.\-]{1,40}$/;
+const UNDERLYING_RE = /^(NSE|BSE)_(EQ|INDEX)\|[A-Za-z0-9 &.\-]{1,40}$/;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const UNITS = new Set(["minutes", "hours", "days", "weeks", "months"]);
 
@@ -144,6 +145,50 @@ async function quote(p: any) {
     const prev = ltp - chg;
     return { key: v.instrument_token, ltp, changePct: prev ? (chg / prev) * 100 : 0 };
   });
+}
+
+// ---------------------------------------------------------------------------
+// Options
+
+/** Expiry dates and lot size for an underlying's option contracts. */
+async function optionExpiries(p: any) {
+  const key = String(p.key ?? "");
+  if (!UNDERLYING_RE.test(key)) throw new HttpError(400, "Bad underlying key");
+  const data = await upstox(`/v2/option/contract?instrument_key=${encodeURIComponent(key)}`);
+  const list = Array.isArray(data) ? data : [];
+  const expiries = [...new Set(list.map((c: any) => String(c.expiry)))].filter((d) => DATE_RE.test(d)).sort();
+  return { expiries, lotSize: Number(list[0]?.lot_size) || 1, exchange: list[0]?.exchange ?? null };
+}
+
+const side = (o: any) => o && ({
+  key: o.instrument_key,
+  ltp: +o.market_data?.ltp || 0,
+  close: +o.market_data?.close_price || 0,
+  volume: +o.market_data?.volume || 0,
+  oi: +o.market_data?.oi || 0,
+  prevOi: +o.market_data?.prev_oi || 0,
+  bid: +o.market_data?.bid_price || 0,
+  ask: +o.market_data?.ask_price || 0,
+  iv: +o.option_greeks?.iv || 0,
+  delta: +o.option_greeks?.delta || 0,
+  theta: +o.option_greeks?.theta || 0,
+  gamma: +o.option_greeks?.gamma || 0,
+  vega: +o.option_greeks?.vega || 0,
+});
+
+/** Full chain for one expiry: strikes with call (ce) and put (pe) sides. */
+async function optionChain(p: any) {
+  const key = String(p.key ?? "");
+  if (!UNDERLYING_RE.test(key)) throw new HttpError(400, "Bad underlying key");
+  if (!DATE_RE.test(String(p.expiry ?? ""))) throw new HttpError(400, "Expiry must be yyyy-MM-dd");
+  const data = await upstox(`/v2/option/chain?instrument_key=${encodeURIComponent(key)}&expiry_date=${p.expiry}`);
+  const rows = (Array.isArray(data) ? data : []).map((r: any) => ({
+    strike: +r.strike_price,
+    pcr: +r.pcr || 0,
+    ce: side(r.call_options),
+    pe: side(r.put_options),
+  })).sort((a: any, b: any) => a.strike - b.strike);
+  return { spot: +(data?.[0]?.underlying_spot_price) || 0, rows };
 }
 
 // ---------------------------------------------------------------------------
@@ -217,6 +262,8 @@ Deno.serve(async (req) => {
       }
       case "candles": return reply(200, { data: await candles(body) });
       case "quote": return reply(200, { data: await quote(body) });
+      case "option_expiries": return reply(200, { data: await optionExpiries(body) });
+      case "option_chain": return reply(200, { data: await optionChain(body) });
       default: throw new HttpError(400, "Unknown action");
     }
   } catch (e) {

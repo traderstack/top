@@ -10,6 +10,7 @@ import { initSettings } from './ui/settings.js';
 import { initStrategy } from './ui/strategy.js';
 import { initPaper } from './ui/paper.js';
 import { initTicket } from './ui/ticket.js';
+import { initOptions } from './ui/options.js';
 import { broker } from './paper/broker.js';
 
 class App extends Emitter {
@@ -183,6 +184,7 @@ initSettings(app);
 initStrategy(app);
 initPaper(app);
 initTicket(app);
+initOptions(app);
 
 // Coming back from the Upstox login page.
 {

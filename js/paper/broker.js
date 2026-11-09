@@ -74,6 +74,7 @@ class PaperBroker extends Emitter {
     qty = +qty;
     if (!(qty > 0)) throw new Error('Enter a quantity above zero.');
     if (marketOf(sym).intQty && !Number.isInteger(qty)) throw new Error('Stocks trade in whole shares.');
+    if (sym.lot > 1 && qty % sym.lot !== 0) throw new Error(`${sym.ticker} trades in lots of ${sym.lot}. Use a multiple of ${sym.lot}.`);
     const ccy = accountFor(sym);
     if (!ccy) throw new Error(`Paper trading supports INR and USD-quoted symbols; ${sym.ticker} is quoted in ${ccyOf(sym)}.`);
     if (type !== 'market' && !(+price > 0)) throw new Error('Enter a price for limit and stop orders.');
@@ -252,7 +253,7 @@ class PaperBroker extends Emitter {
         const ccy = accountFor(bot.sym);
         const { equity } = this.equity(ccy);
         let qty = (equity * bot.sizePct / 100) / px;
-        qty = marketOf(bot.sym).intQty ? Math.floor(qty) : Math.floor(qty * 1e6) / 1e6;
+        qty = bot.sym.lot > 1 ? Math.floor(qty / bot.sym.lot) * bot.sym.lot : marketOf(bot.sym).intQty ? Math.floor(qty) : Math.floor(qty * 1e6) / 1e6;
         if (qty > 0) {
           this.placeOrder({ sym: bot.sym, side: target > 0 ? 'buy' : 'sell', qty, botId: bot.id, note: `Bot ${bot.name}: ${sig}` });
         }
