@@ -109,6 +109,31 @@ function bars(n, sec, base) {
   await page.waitForTimeout(800);
   check((await page.textContent('#symbolName')).includes('24000 CE'), 'clicking an option price opens its chart');
 
+  // Drawing tools: trend line (2 clicks), horizontal line, select + Delete, measure.
+  const drawCount = () => page.evaluate(() => Object.entries(localStorage).filter(([k]) => k.startsWith('ts.draw.') && k !== 'ts.draw.flags').reduce((n, [, v]) => n + JSON.parse(v).length, 0));
+  const before = await drawCount();
+  const cb = await page.locator('#chartMain').boundingBox();
+  await page.click('.draw-btn[data-tool=trend]');
+  await page.mouse.click(cb.x + 200, cb.y + 150);
+  await page.mouse.click(cb.x + 400, cb.y + 250);
+  await page.waitForTimeout(150);
+  check((await drawCount()) === before + 1, 'trend line saved after two clicks');
+  check(await page.evaluate(() => document.querySelector('.draw-btn[data-tool=cursor]').classList.contains('on')), 'tool returns to cursor after drawing');
+  await page.click('.draw-btn[data-tool=hline]');
+  await page.mouse.click(cb.x + 300, cb.y + 100);
+  await page.waitForTimeout(150);
+  check((await drawCount()) === before + 2, 'horizontal line saved');
+  check((await page.locator('.draw-layer .drawing').count()) >= 2, 'drawings render on the chart');
+  await page.keyboard.press('Delete');
+  await page.waitForTimeout(150);
+  check((await drawCount()) === before + 1, 'Delete removes the selected drawing');
+  await page.click('.draw-btn[data-tool=measure]');
+  await page.mouse.click(cb.x + 150, cb.y + 300);
+  await page.mouse.click(cb.x + 350, cb.y + 120);
+  await page.waitForTimeout(150);
+  check(/bars/.test(await page.textContent('.draw-layer .measure') || ''), 'measure shows change and bar count');
+  await page.keyboard.press('Escape');
+
   // The session survives a reload.
   await page.reload();
   await page.waitForSelector('.wl-row');
