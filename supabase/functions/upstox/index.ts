@@ -5,7 +5,8 @@
 // never returns the access token. Every request must carry the private ACCESS_KEY
 // in the x-access-key header.
 //
-// Secrets: ACCESS_KEY, ALLOWED_ORIGINS (optional).
+// Secrets: ACCESS_KEY, UPSTOX_ANALYTICS_TOKEN (recommended: read-only, valid ~1 year,
+// no daily login), ALLOWED_ORIGINS (optional).
 // SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are provided by Supabase.
 
 const API = "https://api.upstox.com";
@@ -38,7 +39,11 @@ function corsHeaders(req: Request): Record<string, string> {
 
 let cached: { token: string; userId: string; createdAt: string; at: number } | null = null;
 
+/** A read-only Upstox Analytics token (valid ~1 year) skips the daily login entirely. */
+const analyticsToken = () => Deno.env.get("UPSTOX_ANALYTICS_TOKEN") || "";
+
 async function loadSession(force = false) {
+  if (analyticsToken()) return { token: analyticsToken(), userId: "analytics", createdAt: "", at: Date.now() };
   if (!force && cached && Date.now() - cached.at < 60_000) return cached;
   const key = env("SUPABASE_SERVICE_ROLE_KEY");
   const res = await fetch(`${env("SUPABASE_URL")}/rest/v1/upstox_session?id=eq.1&select=user_id,access_token,created_at`, {
@@ -61,6 +66,7 @@ async function upstox(path: string, { optionalAuth = false, retried = false } = 
   const res = await fetch(`${API}${path}`, { headers });
   const json = await res.json().catch(() => ({}));
   if (res.status === 401) {
+    if (analyticsToken()) throw new HttpError(502, "Upstox rejected the Analytics token. Generate a new one and update the UPSTOX_ANALYTICS_TOKEN secret.");
     if (!retried) return upstox(path, { optionalAuth, retried: true }); // maybe a fresh login just happened
     throw needsLogin("Your Upstox session has expired. Log in again (sessions end every night).");
   }
@@ -161,6 +167,11 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     switch (body.action) {
       case "status": {
+        if (analyticsToken()) {
+          // Analytics tokens are read-only, so check with a market-data call instead of the profile.
+          await upstox(`/v2/market-quote/ltp?instrument_key=${encodeURIComponent("NSE_INDEX|Nifty 50")}`);
+          return reply(200, { data: { connected: true, userName: "Upstox Analytics token", analytics: true } });
+        }
         const s = await loadSession(true);
         if (!s) return reply(200, { data: { connected: false } });
         try {

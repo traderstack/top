@@ -46,7 +46,17 @@ Two Edge Functions run in the Supabase project `traderstack`
 - `upstox` serves candles and quotes to browsers that send your `ACCESS_KEY`. It
   never places orders and never returns the access token.
 
-Setup:
+Setup with an **Analytics token** (recommended: read-only, valid about a year,
+no daily login):
+
+1. At account.upstox.com/developer/apps → **Analytics** → **Generate Token**.
+2. In Supabase → project `traderstack` → Edge Functions → Secrets, add
+   `UPSTOX_ANALYTICS_TOKEN` (the token) and `ACCESS_KEY` (a long random password
+   you make up).
+3. On the site, open **Settings**, paste the same `ACCESS_KEY` and press
+   **Check connection**. Generate a new token when Upstox expires it.
+
+Alternative setup with a daily login (only if you don't use an Analytics token):
 
 1. Create an app at account.upstox.com/developer/apps with this **Redirect URL**:
    `https://jdhqomlblzzrctuntvik.supabase.co/functions/v1/upstox-callback`.
