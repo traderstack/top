@@ -118,7 +118,7 @@ label.check { display: flex; align-items: center; gap: 6px; font-size: 12px; cur
 
 /* Drawing tools */
 .draw-bar { width: 44px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 6px 0; border-right: 1px solid var(--border); overflow-y: auto; background: var(--surface); }
-.draw-btn { width: 32px; height: 30px; display: grid; place-items: center; border: 0; border-radius: 7px; background: transparent; color: var(--text-muted); cursor: pointer; flex-shrink: 0; }
+.draw-btn { width: 32px; height: 27px; display: grid; place-items: center; border: 0; border-radius: 7px; background: transparent; color: var(--text-muted); cursor: pointer; flex-shrink: 0; }
 .draw-btn:hover { background: var(--surface-3); color: var(--text); }
 .draw-btn.on { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .draw-sep { width: 24px; border: 0; border-top: 1px solid var(--border); margin: 3px 0; flex-shrink: 0; }
