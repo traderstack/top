@@ -21,13 +21,20 @@ export function initSearch(app) {
     }, m.label)));
   }
 
+  // Move the highlight without rebuilding rows, so a click always lands on the row it started on.
+  function highlight(i) {
+    sel = i;
+    [...list.children].forEach((row, j) => row.classList.toggle('sel', j === sel));
+    list.children[sel]?.scrollIntoView({ block: 'nearest' });
+  }
+
   function renderResults(msg) {
     if (msg) { fill(list, h('div', { class: 'empty' }, msg)); return; }
     fill(list, ...results.map((s, i) => h('div', {
       class: `r${i === sel ? ' sel' : ''}`, role: 'option',
       onclick: () => choose(s),
-      onmouseenter: () => { sel = i; renderResults(); },
-    }, h('div', {}, h('b', {}, s.name || s.ticker), ' ', h('span', { class: 'm' }, s.ticker)),
+      onmouseenter: () => highlight(i),
+    }, h('div', {}, h('b', {}, s.name || s.ticker), ' ', h('span', { class: 'm' }, s.desc && s.desc !== s.name ? s.desc : s.ticker)),
     h('span', { class: 'm' }, MARKETS[s.market].label))));
   }
 
@@ -64,8 +71,8 @@ export function initSearch(app) {
 
   input.addEventListener('input', run);
   input.addEventListener('keydown', (e) => {
-    if (e.key === 'ArrowDown') { sel = Math.min(results.length - 1, sel + 1); renderResults(); e.preventDefault(); }
-    if (e.key === 'ArrowUp') { sel = Math.max(0, sel - 1); renderResults(); e.preventDefault(); }
+    if (e.key === 'ArrowDown') { highlight(Math.min(results.length - 1, sel + 1)); e.preventDefault(); }
+    if (e.key === 'ArrowUp') { highlight(Math.max(0, sel - 1)); e.preventDefault(); }
     if (e.key === 'Enter' && results[sel]) choose(results[sel]);
   });
   dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close(); });
