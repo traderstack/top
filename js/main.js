@@ -12,6 +12,7 @@ import { initPaper } from './ui/paper.js';
 import { initTicket } from './ui/ticket.js';
 import { initOptions } from './ui/options.js';
 import { broker } from './paper/broker.js';
+import { DrawingTools } from './drawings.js';
 
 class App extends Emitter {
   constructor() {
@@ -96,6 +97,9 @@ class App extends Emitter {
 const app = new App();
 const chart = new ChartView($('#chartMain'), $('#chartPane'));
 app.chart = chart;
+const drawings = new DrawingTools(chart, $('#drawBar'), app);
+drawings.setSymbol(app.sym);
+app.on('symbol', (sym) => drawings.setSymbol(sym));
 
 function showStatus(node) {
   const el = $('#chartStatus');

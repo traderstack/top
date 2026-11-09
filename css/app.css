@@ -113,7 +113,24 @@ label.check { display: flex; align-items: center; gap: 6px; font-size: 12px; cur
 .watchlist, .ticket { background: var(--surface); border-right: 1px solid var(--border); overflow-y: auto; min-height: 0; }
 .ticket { border-right: 0; border-left: 1px solid var(--border); padding: 12px; display: flex; flex-direction: column; gap: 12px; }
 .center { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-.chart-area { flex: 1; display: flex; flex-direction: column; min-height: 220px; position: relative; background: var(--surface); }
+.chart-area { flex: 1; display: flex; min-height: 220px; position: relative; background: var(--surface); }
+.chart-col { flex: 1; display: flex; flex-direction: column; min-width: 0; position: relative; }
+
+/* Drawing tools */
+.draw-bar { width: 44px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 6px 0; border-right: 1px solid var(--border); overflow-y: auto; background: var(--surface); }
+.draw-btn { width: 32px; height: 30px; display: grid; place-items: center; border: 0; border-radius: 7px; background: transparent; color: var(--text-muted); cursor: pointer; flex-shrink: 0; }
+.draw-btn:hover { background: var(--surface-3); color: var(--text); }
+.draw-btn.on { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.draw-sep { width: 24px; border: 0; border-top: 1px solid var(--border); margin: 3px 0; flex-shrink: 0; }
+.draw-layer { position: absolute; left: 0; top: 0; z-index: 2; pointer-events: none; overflow: hidden; }
+.draw-layer.placing { pointer-events: all; cursor: crosshair; }
+.draw-layer .hit { stroke: transparent; stroke-width: 12; pointer-events: stroke; cursor: move; }
+.draw-layer .hit-fill { fill: transparent; pointer-events: all; cursor: move; }
+.draw-layer .handle { pointer-events: all; cursor: grab; }
+.draw-layer .draw-text { pointer-events: all; cursor: move; paint-order: stroke; stroke: var(--surface); stroke-width: 3px; }
+.draw-layer .draw-label { pointer-events: none; paint-order: stroke; stroke: var(--surface); stroke-width: 3px; font-variant-numeric: tabular-nums; }
+.draw-layer.locked * { pointer-events: none !important; }
+.draw-layer.placing .drawing * { pointer-events: none; }
 .chart-main { flex: 1; min-height: 0; position: relative; }
 .chart-pane { height: 130px; border-top: 1px solid var(--border); flex-shrink: 0; }
 .chart-legend {
@@ -309,7 +326,9 @@ body.locked > header, body.locked > .layout { display: none !important; }
   .quote { min-width: 0; }
   .layout { display: flex; flex-direction: column; }
   .watchlist { max-height: 220px; border-right: 0; border-bottom: 1px solid var(--border); }
-  .chart-area { min-height: 360px; }
+  .chart-area { min-height: 360px; flex-direction: column; }
+  .draw-bar { width: auto; flex-direction: row; overflow-x: auto; overflow-y: hidden; border-right: 0; border-bottom: 1px solid var(--border); padding: 4px 8px; }
+  .draw-sep { width: 0; height: 24px; border-top: 0; border-left: 1px solid var(--border); margin: 0 4px; }
   .bottom { height: auto; min-height: 300px; }
   .st-grid { grid-template-columns: 1fr; }
   .tab-body { padding: 12px 16px; }

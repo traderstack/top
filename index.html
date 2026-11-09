@@ -6,7 +6,7 @@
   <title>TraderStack — Charts, Backtesting &amp; Paper Trading</title>
   <meta name="description" content="Live charts for NSE, BSE, crypto and forex, with a strategy backtester and paper-trading terminal.">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230f9d76'/%3E%3Cpath d='M7 21l6-6 4 4 8-9' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="css/app.css?v=0ea070b0f7">
+  <link rel="stylesheet" href="css/app.css?v=7854eca853">
   <script>
     try { const t = localStorage.getItem('ts.theme'); if (t) document.documentElement.dataset.theme = JSON.parse(t); } catch {}
   </script>
@@ -39,9 +39,12 @@
 
     <main class="center">
       <section class="chart-area">
-        <div class="chart-status" id="chartStatus"></div>
-        <div class="chart-main" id="chartMain"></div>
-        <div class="chart-pane" id="chartPane" hidden></div>
+        <nav class="draw-bar" id="drawBar" aria-label="Drawing tools"></nav>
+        <div class="chart-col">
+          <div class="chart-status" id="chartStatus"></div>
+          <div class="chart-main" id="chartMain"></div>
+          <div class="chart-pane" id="chartPane" hidden></div>
+        </div>
       </section>
       <section class="bottom" id="bottom">
         <nav class="tabs" role="tablist">
@@ -80,7 +83,8 @@
     "./js/data/forex.js": "./js/data/forex.js?v=b5967c8e89",
     "./js/data/markets.js": "./js/data/markets.js?v=2452df8a1f",
     "./js/data/upstox.js": "./js/data/upstox.js?v=011555e7f6",
-    "./js/main.js": "./js/main.js?v=740c1c4366",
+    "./js/drawings.js": "./js/drawings.js?v=70f25ab787",
+    "./js/main.js": "./js/main.js?v=5b20fb692f",
     "./js/paper/broker.js": "./js/paper/broker.js?v=787e3a66b4",
     "./js/ta.js": "./js/ta.js?v=8b4661feec",
     "./js/timeframes.js": "./js/timeframes.js?v=79b28a52cf",
