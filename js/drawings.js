@@ -7,7 +7,8 @@ import { symId } from './data/markets.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const FIB_LEVELS = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
-const POINTS_NEEDED = { trend: 2, ray: 2, hline: 1, vline: 1, rect: 2, fib: 2, text: 1, measure: 2 };
+const POINTS_NEEDED = { trend: 2, ray: 2, hline: 1, vline: 1, rect: 2, fib: 2, channel: 3, long: 1, short: 1, text: 1, measure: 2 };
+const POSITION_DEFAULTS = { targetPct: 2, stopPct: 1, bars: 20 };
 
 // Toolbar definition. Icons are simple inline SVG paths drawn for TraderStack.
 const icon = (d, extra = '') => `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${d}${extra}</svg>`;
@@ -19,6 +20,9 @@ export const TOOLS = [
   { id: 'vline', label: 'Vertical line', key: 'V', svg: icon('<path d="M12 3v18"/><circle cx="12" cy="12" r="1.8"/>') },
   { id: 'rect', label: 'Rectangle', key: 'B', svg: icon('<rect x="4" y="6" width="16" height="12" rx="1"/>') },
   { id: 'fib', label: 'Fibonacci retracement', key: 'F', svg: icon('<path d="M3 5h18M3 9.5h18M3 13h18M3 19h18" /><path d="M5 19L19 5" stroke-dasharray="2 2"/>') },
+  { id: 'channel', label: 'Parallel channel', key: 'P', svg: icon('<path d="M3 15L15 4M9 20L21 9"/><path d="M6 17.5L18 6.5" stroke-dasharray="2 2.5" stroke-opacity=".7"/>') },
+  { id: 'long', label: 'Long position', key: 'L', svg: icon('<rect x="4" y="4" width="16" height="9" rx="1" fill="currentColor" fill-opacity=".18"/><rect x="4" y="13" width="16" height="7" rx="1"/><path d="M12 11V6M9.5 8.5L12 6l2.5 2.5"/>') },
+  { id: 'short', label: 'Short position', key: 'S', svg: icon('<rect x="4" y="4" width="16" height="7" rx="1"/><rect x="4" y="11" width="16" height="9" rx="1" fill="currentColor" fill-opacity=".18"/><path d="M12 13v5M9.5 15.5L12 18l2.5-2.5"/>') },
   { id: 'text', label: 'Text note', key: 'N', svg: icon('<path d="M5 6V4h14v2M12 4v16M9 20h6"/>') },
   { sep: true },
   { id: 'measure', label: 'Measure', key: 'M', svg: icon('<path d="M4 17L17 4l3 3L7 20z"/><path d="M8 13l2 2M11 10l2 2M14 7l2 2"/>') },
@@ -234,7 +238,11 @@ export class DrawingTools {
       const d = this.drawings.find((v) => v.id === this.drag.id);
       const p = this.#fromXY(x, y, this.drag.handle != null && this.flags.magnet);
       if (!d || !p || !this.drag.start) return;
-      if (this.drag.handle != null) {
+      if (this.drag.handle != null && (d.type === 'long' || d.type === 'short') && this.drag.handle > 0) {
+        // Target and stop share the box's right edge; each handle sets its own price.
+        d.points[this.drag.handle] = p;
+        d.points[this.drag.handle === 1 ? 2 : 1].time = p.time;
+      } else if (this.drag.handle != null) {
         d.points[this.drag.handle] = p;
       } else {
         const dl = this.#timeToLogical(p.time) - this.#timeToLogical(this.drag.start.time);
@@ -284,6 +292,16 @@ export class DrawingTools {
 
     const draft = this.draft ?? { id: Math.random().toString(36).slice(2, 10), type, points: [] };
     draft.points.push(p);
+    if (type === 'long' || type === 'short') {
+      // One click sets the entry; target, stop and width start from defaults and are dragged into place.
+      const dir = type === 'long' ? 1 : -1;
+      const end = this.#logicalToTime(this.#timeToLogical(p.time) + POSITION_DEFAULTS.bars);
+      draft.points = [
+        p,
+        { time: end, price: p.price * (1 + dir * POSITION_DEFAULTS.targetPct / 100) },
+        { time: end, price: p.price * (1 - dir * POSITION_DEFAULTS.stopPct / 100) },
+      ];
+    }
     if (draft.points.length < POINTS_NEEDED[type]) { this.draft = draft; draft.hover = p; return; }
 
     if (type === 'text') {
@@ -373,6 +391,78 @@ export class DrawingTools {
           label(roomRight ? x2 + 4 : x1 - 4, y + 4, `${(lvl * 100).toFixed(1)}%  ${fmtPrice(price)}`, roomRight ? 'start' : 'end');
         }
         line(pts[0].x, pts[0].y, pts[1].x, pts[1].y, { 'stroke-dasharray': '3 3', 'stroke-opacity': 0.6 });
+      }
+      if (d.type === 'channel' && pts.length >= 2) {
+        const [a, b] = pts;
+        line(a.x, a.y, b.x, b.y);
+        if (pts.length >= 3) {
+          // The third point sets the offset of the parallel line (in price, at its own time).
+          const [pa, pb, pc] = d.points;
+          const la = this.#timeToLogical(pa.time);
+          const lb = this.#timeToLogical(pb.time);
+          const lc = this.#timeToLogical(pc.time);
+          const baseAtC = lb === la ? pa.price : pa.price + ((pb.price - pa.price) * (lc - la)) / (lb - la);
+          const dp = pc.price - baseAtC;
+          const a2 = this.#toXY({ time: pa.time, price: pa.price + dp });
+          const b2 = this.#toXY({ time: pb.time, price: pb.price + dp });
+          const am = this.#toXY({ time: pa.time, price: pa.price + dp / 2 });
+          const bm = this.#toXY({ time: pb.time, price: pb.price + dp / 2 });
+          if (a2 && b2 && am && bm) {
+            const poly = `${a.x},${a.y} ${b.x},${b.y} ${b2.x},${b2.y} ${a2.x},${a2.y}`;
+            g.append(el('polygon', { points: poly, class: 'hit-fill' }));
+            g.append(el('polygon', { points: poly, fill: stroke, 'fill-opacity': 0.1 }));
+            line(a2.x, a2.y, b2.x, b2.y);
+            line(am.x, am.y, bm.x, bm.y, { 'stroke-dasharray': '4 4', 'stroke-opacity': 0.6 });
+          }
+        }
+      }
+      if ((d.type === 'long' || d.type === 'short') && pts.length >= 3) {
+        const [entry, target, stop] = d.points;
+        const [pe, pt, ps] = pts;
+        const x1 = Math.min(pe.x, pt.x);
+        const w = Math.max(2, Math.abs(pt.x - pe.x));
+        const upC = css('--up');
+        const downC = css('--down');
+        const box = (yA, yB, c) => {
+          const r = { x: x1, y: Math.min(yA, yB), width: w, height: Math.max(1, Math.abs(yB - yA)) };
+          g.append(el('rect', { ...r, class: 'hit-fill' }));
+          g.append(el('rect', { ...r, fill: c, 'fill-opacity': 0.16, stroke: c, 'stroke-opacity': sel ? 0.9 : 0.5 }));
+        };
+        box(pe.y, pt.y, upC);
+        box(pe.y, ps.y, downC);
+        g.append(el('line', { x1, y1: pe.y, x2: x1 + w, y2: pe.y, stroke: textColor, 'stroke-width': 1.2 }));
+
+        const pct = (v) => ((v - entry.price) / entry.price) * 100;
+        const risk = Math.abs(entry.price - stop.price);
+        const reward = Math.abs(target.price - entry.price);
+        const rr = risk ? reward / risk : 0;
+
+        // Did price reach the target or the stop first, after entry and within the box?
+        const bars = this.view.bars;
+        const from = Math.max(0, Math.ceil(this.#timeToLogical(entry.time)));
+        const to = Math.min(bars.length - 1, Math.floor(this.#timeToLogical(target.time)));
+        const long = d.type === 'long';
+        let outcome = 'Open';
+        for (let i = from; i <= to; i++) {
+          const k = bars[i];
+          const hitStop = long ? k.low <= stop.price : k.high >= stop.price;
+          const hitTarget = long ? k.high >= target.price : k.low <= target.price;
+          if (hitStop) { outcome = 'Stopped out'; break; }
+          if (hitTarget) { outcome = 'Target hit'; break; }
+        }
+        const tag = (x, y, text, c, anchor = 'start') => {
+          const t = el('text', { x, y, fill: c, 'font-size': 11, 'font-weight': 600, 'text-anchor': anchor, class: 'draw-label' });
+          t.textContent = text;
+          g.append(t);
+        };
+        // Labels sit inside the box, or to its left when the box is near the right edge.
+        const roomRight = x1 + 240 < width;
+        const anchor = roomRight ? 'start' : 'end';
+        const tx = roomRight ? x1 + 6 : x1 - 6;
+        const above = (y1, y2) => Math.min(y1, y2);
+        tag(tx, (long ? above(pe.y, pt.y) : Math.max(pe.y, pt.y)) + (long ? 14 : -6), `Target ${fmtPrice(target.price)} (${pct(target.price) >= 0 ? '+' : ''}${pct(target.price).toFixed(2)}%)`, upC, anchor);
+        tag(tx, (long ? Math.max(pe.y, ps.y) : above(pe.y, ps.y)) + (long ? -6 : 14), `Stop ${fmtPrice(stop.price)} (${pct(stop.price) >= 0 ? '+' : ''}${pct(stop.price).toFixed(2)}%)`, downC, anchor);
+        tag(tx, pe.y - 5, `${long ? 'Long' : 'Short'} ${fmtPrice(entry.price)} · R:R ${rr.toFixed(2)} · ${outcome}`, textColor, anchor);
       }
       if (d.type === 'text' && d.text) {
         const t = el('text', { x: pts[0].x, y: pts[0].y, fill: sel ? accent : textColor, 'font-size': 13, 'font-weight': 600, class: 'draw-text' });
