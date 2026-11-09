@@ -45,7 +45,13 @@ function bars(n, sec, base) {
     if (r.request().method() === 'OPTIONS') return r.fulfill({ status: 204 });
     const b = r.request().postDataJSON();
     if (b.action === 'status') return r.fulfill({ json: { data: { connected: true, analytics: true } } });
-    if (b.action === 'quote') return r.fulfill({ json: { data: b.keys.map((key) => ({ key, ltp: 2900, changePct: 1.2 })) } });
+    if (b.action === 'quote') return r.fulfill({ json: { data: b.keys.map((key) => ({ key, ltp: key.startsWith('NSE_FO') ? 120 : 2900, changePct: 1.2 })) } });
+    if (b.action === 'option_expiries') return r.fulfill({ json: { data: { expiries: ['2026-11-11', '2026-11-18'], lotSize: 75 } } });
+    if (b.action === 'option_chain') {
+      const side = (k, ltp, oi) => ({ key: `NSE_FO|${k}`, ltp, close: ltp * 0.9, volume: 1000, oi, prevOi: oi * 0.8, iv: 14.2, delta: 0.5 });
+      const rows = Array.from({ length: 41 }, (_, i) => { const strike = 23000 + i * 50; return { strike, ce: side(1000 + i, Math.max(5, 24010 - strike), 5000 + i * 100), pe: side(2000 + i, Math.max(5, strike - 24010), 9000 - i * 100) }; });
+      return r.fulfill({ json: { data: { spot: 24010, rows } } });
+    }
     return r.fulfill({ json: { data: bars(300, 86400, 2900) } });
   });
   await page.routeWebSocket(/.*/, () => {});
@@ -85,6 +91,23 @@ function bars(n, sec, base) {
   // Backtest runs on the loaded chart.
   await page.click('text=Run backtest');
   check((await page.locator('.stat').count()) >= 8, 'backtest shows stats');
+
+  // Option chain: renders around the ATM strike, B buys one lot, LTP opens the chart.
+  await page.click('[data-tab=options]');
+  await page.waitForSelector('table.oc tbody tr');
+  check((await page.locator('table.oc tbody tr').count()) === 21, 'option chain shows ±10 strikes');
+  check((await page.textContent('table.oc tr.atm td.strike')).includes('24,000'), 'ATM strike is highlighted');
+  check((await page.textContent('.oc-summary')).includes('Max pain'), 'PCR and max pain shown');
+  const atm = page.locator('table.oc tr.atm');
+  await atm.hover();
+  await atm.locator('td.ltp').first().locator('button.b').click();
+  await page.waitForTimeout(400);
+  const pos = JSON.parse(await page.evaluate(() => localStorage.getItem('ts.paper'))).positions;
+  const opt = Object.values(pos).find((p) => p.sym.option);
+  check(opt && opt.qty === 75, 'B buys one lot (75) of the call');
+  await atm.locator('td.ltp a').first().click();
+  await page.waitForTimeout(800);
+  check((await page.textContent('#symbolName')).includes('24000 CE'), 'clicking an option price opens its chart');
 
   // The session survives a reload.
   await page.reload();

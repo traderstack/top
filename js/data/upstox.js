@@ -195,3 +195,31 @@ export function subscribeCandles(sym, tf, onBar, _onStatus, lastBar) {
     onBar({ ...cur, closed: false });
   });
 }
+
+// ---------------------------------------------------------------------------
+// Options
+
+/** Underlyings with listed options. Stocks: any NSE F&O stock's NSE_EQ key also works. */
+export const OPTION_UNDERLYINGS = [
+  { label: 'NIFTY', key: 'NSE_INDEX|Nifty 50', exchange: 'NSE' },
+  { label: 'BANKNIFTY', key: 'NSE_INDEX|Nifty Bank', exchange: 'NSE' },
+  { label: 'FINNIFTY', key: 'NSE_INDEX|Nifty Fin Service', exchange: 'NSE' },
+  { label: 'MIDCPNIFTY', key: 'NSE_INDEX|NIFTY MID SELECT', exchange: 'NSE' },
+  { label: 'SENSEX', key: 'BSE_INDEX|SENSEX', exchange: 'BSE' },
+];
+
+export const optionExpiries = (key) => call('option_expiries', { key });
+export const optionChain = (key, expiry) => call('option_chain', { key, expiry });
+
+const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+export const fmtExpiry = (d) => `${d.slice(8, 10)} ${MONTHS[+d.slice(5, 7) - 1]}`;
+
+/** A chartable, paper-tradable symbol for one option contract. */
+export function optionSymbol(underlying, expiry, strike, type, contract, lotSize) {
+  const exchange = underlying.exchange;
+  const ticker = `${underlying.label} ${fmtExpiry(expiry)} ${strike} ${type}`;
+  return {
+    market: exchange.toLowerCase(), src: 'upstox', exchange, ticker, name: ticker, key: contract.key,
+    lot: lotSize || 1, option: { underlying: underlying.label, expiry, strike, type },
+  };
+}

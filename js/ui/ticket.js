@@ -21,7 +21,8 @@ export function initTicket(app) {
       return;
     }
     const acct = broker.equity(ccy);
-    const qty = h('input', { type: 'number', min: 0, step: marketOf(sym).intQty ? 1 : 'any', value: qtyVal, placeholder: marketOf(sym).intQty ? 'Shares' : 'Units', oninput: () => { qtyVal = qty.value; renderCost(); } });
+    const lot = sym.lot > 1 ? sym.lot : 0;
+    const qty = h('input', { type: 'number', min: 0, step: lot || (marketOf(sym).intQty ? 1 : 'any'), value: qtyVal, placeholder: lot ? `Multiple of ${lot} (1 lot)` : marketOf(sym).intQty ? 'Shares' : 'Units', oninput: () => { qtyVal = qty.value; renderCost(); } });
     const price = h('input', { type: 'number', min: 0, step: 'any', value: priceVal, placeholder: last ? fmtPrice(last).replace(/,/g, '') : 'Price', oninput: () => { priceVal = price.value; renderCost(); } });
     const cost = h('b', {}, '—');
     const renderCost = () => {
@@ -34,7 +35,7 @@ export function initTicket(app) {
         const p = type === 'market' ? last : +priceVal || last;
         if (!p) return;
         let q = (acct.equity * pct / 100) / p;
-        q = marketOf(sym).intQty ? Math.floor(q) : Math.floor(q * 1e6) / 1e6;
+        q = lot ? Math.floor(q / lot) * lot : marketOf(sym).intQty ? Math.floor(q) : Math.floor(q * 1e6) / 1e6;
         qtyVal = String(q);
         render();
       },
@@ -57,7 +58,8 @@ export function initTicket(app) {
         h('button', { class: `sell${side === 'sell' ? ' on' : ''}`, onclick: () => { side = 'sell'; render(); } }, 'Sell')),
       h('div', { class: 'seg' }, ...['market', 'limit', 'stop'].map((t) => h('button', { class: t === type ? 'on' : '', onclick: () => { type = t; render(); } }, t[0].toUpperCase() + t.slice(1)))),
       type !== 'market' ? h('label', { class: 'field' }, type === 'limit' ? 'Limit price' : 'Stop (trigger) price', price) : null,
-      h('label', { class: 'field' }, 'Quantity', qty),
+      h('label', { class: 'field' }, lot ? `Quantity (lot size ${lot})` : 'Quantity', qty),
+      lot ? h('div', { class: 'seg' }, ...[1, 2, 5, 10].map((n) => h('button', { onclick: () => { qtyVal = String(n * lot); render(); } }, `${n} lot${n > 1 ? 's' : ''}`))) : null,
       h('div', { class: 'seg' }, pctBtn(10), pctBtn(25), pctBtn(50), pctBtn(100)),
       h('div', { class: 'kv' }, h('span', {}, 'Order value'), cost),
       h('button', { class: `btn ${side}`, onclick: submit }, `${side === 'buy' ? 'Buy' : 'Sell'} ${sym.ticker}`),
