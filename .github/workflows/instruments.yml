@@ -1,0 +1,27 @@
+name: Update NSE/BSE symbol list
+
+on:
+  schedule:
+    - cron: '17 1 * * 1' # Mondays 06:47 IST
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/build-instruments.mjs
+      - name: Commit if changed
+        run: |
+          git add data/instruments
+          if git diff --cached --quiet; then echo "No changes"; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Update NSE/BSE symbol list"
+          git push

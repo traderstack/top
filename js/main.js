@@ -2,8 +2,8 @@
 import { $, $$, h, store, Emitter, decimalsFor, fmtPrice, fmtPct, clsUpDown, toast, fill } from './util.js';
 import { TIMEFRAMES } from './timeframes.js';
 import { ChartView, INDICATORS } from './chart.js';
-import { MARKETS, DEFAULT_WATCHLISTS, getCandles, subscribeCandles, prices, symId, timeframesOf, marketOf } from './data/markets.js';
-import { isConfigured as angelConfigured } from './data/angel.js';
+import { MARKETS, DEFAULT_WATCHLISTS, getCandles, subscribeCandles, prices, symId, timeframesOf, marketOf, isStaleIndian } from './data/markets.js';
+import { isConfigured as upstoxConfigured, status as upstoxStatus, LOGIN_URL } from './data/upstox.js';
 import { initWatchlist } from './ui/watchlist.js';
 import { initSearch } from './ui/search.js';
 import { initSettings } from './ui/settings.js';
@@ -16,6 +16,7 @@ class App extends Emitter {
   constructor() {
     super();
     this.sym = store.get('symbol', DEFAULT_WATCHLISTS.crypto[0]);
+    if (isStaleIndian(this.sym)) this.sym = DEFAULT_WATCHLISTS[this.sym.market][0];
     this.tf = store.get('tf', '1h');
     this.bars = [];
     this.loadSeq = 0;
@@ -47,10 +48,10 @@ class App extends Emitter {
     this.emit('symbol', sym, tf);
     prices.watch('chart', [sym]);
 
-    if ((sym.market === 'nse' || sym.market === 'bse') && !angelConfigured()) {
+    if ((sym.market === 'nse' || sym.market === 'bse') && !upstoxConfigured()) {
       showStatus(h('div', { class: 'card' },
-        h('h3', {}, `Connect Angel One to see ${MARKETS[sym.market].label} data`),
-        h('p', {}, 'NSE and BSE prices come from your Angel One SmartAPI account through your private backend. Add it in Settings. Crypto and forex work right away.'),
+        h('h3', {}, `Connect Upstox to see ${MARKETS[sym.market].label} data`),
+        h('p', {}, 'NSE and BSE prices come from your Upstox account through your private backend. Enter your access key in Settings. Crypto and forex work right away.'),
         h('button', { class: 'btn primary', onclick: () => this.emit('open-settings') }, 'Open settings')));
       chart.setData([]);
       return;
@@ -82,9 +83,11 @@ class App extends Emitter {
       console.error(e);
       chart.setData([]);
       showStatus(h('div', { class: 'card' },
-        h('h3', {}, 'Could not load chart'),
+        h('h3', {}, e.needsLogin ? 'Log in with Upstox' : 'Could not load chart'),
         h('p', {}, e.message),
-        h('button', { class: 'btn', onclick: () => this.load() }, 'Try again')));
+        e.needsLogin
+          ? h('a', { class: 'btn primary', href: LOGIN_URL }, 'Log in with Upstox')
+          : h('button', { class: 'btn', onclick: () => this.load() }, 'Try again')));
     }
   }
 }
@@ -180,6 +183,19 @@ initSettings(app);
 initStrategy(app);
 initPaper(app);
 initTicket(app);
+
+// Coming back from the Upstox login page.
+{
+  const params = new URLSearchParams(location.search);
+  const result = params.get('upstox');
+  if (result) {
+    if (result === 'connected') { toast('Upstox connected — live NSE/BSE prices are on', 'ok', 6000); upstoxStatus.set(false); }
+    else toast(`Upstox login failed: ${params.get('reason') || 'unknown error'}`, 'error', 8000);
+    history.replaceState(null, '', location.pathname);
+  }
+  // Learn whether today's Upstox session is live, so the UI can offer the login button.
+  if (upstoxConfigured()) import('./data/upstox.js').then((m) => m.call('status')).catch(() => {});
+}
 
 renderHeader();
 app.load();

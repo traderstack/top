@@ -1,6 +1,6 @@
-// Settings dialog: Angel One backend connection and paper-trading options.
+// Settings dialog: Upstox connection and paper-trading options.
 import { $, h, toast, fill } from '../util.js';
-import { getConfig, setConfig } from '../data/angel.js';
+import { getConfig, setConfig, call, LOGIN_URL } from '../data/upstox.js';
 import { broker } from '../paper/broker.js';
 
 export function initSettings(app) {
@@ -8,51 +8,57 @@ export function initSettings(app) {
 
   function render() {
     const cfg = getConfig();
-    const url = h('input', { value: cfg.url, placeholder: 'https://<project>.supabase.co/functions/v1/angel', spellcheck: 'false' });
-    const anon = h('input', { value: cfg.anonKey, placeholder: 'Supabase publishable / anon key', spellcheck: 'false' });
-    const access = h('input', { value: cfg.accessKey, type: 'password', placeholder: 'The ACCESS_KEY you set on the function', autocomplete: 'off' });
+    const access = h('input', { value: cfg.accessKey, type: 'password', placeholder: 'The ACCESS_KEY you set in Supabase', autocomplete: 'off' });
+    const url = h('input', { value: cfg.url, spellcheck: 'false' });
+    const anon = h('input', { value: cfg.anonKey, spellcheck: 'false' });
     const status = h('div', { class: 'hint' });
+    const loginBtn = h('a', { class: 'btn primary', href: LOGIN_URL, hidden: true }, 'Log in with Upstox');
     const commission = h('input', { type: 'number', min: 0, step: 0.01, value: broker.state.commissionPct });
 
     const save = () => {
       setConfig({ url: url.value.trim(), anonKey: anon.value.trim(), accessKey: access.value.trim() });
       broker.setCommission(commission.value);
-      app.emit('angel-config');
+      app.emit('broker-config');
     };
 
-    const test = async () => {
+    const check = async () => {
+      if (!access.value.trim()) { status.textContent = 'Enter your access key first.'; status.className = 'hint'; return; }
       save();
-      status.textContent = 'Testing…';
+      status.textContent = 'Checking…';
+      status.className = 'hint';
       try {
-        const res = await fetch(url.value.trim(), {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-access-key': access.value.trim(),
-            ...(anon.value.trim() ? { apikey: anon.value.trim() } : {}),
-          },
-          body: JSON.stringify({ action: 'ping' }),
-        });
-        const json = await res.json().catch(() => ({}));
-        if (!res.ok || json.error) throw new Error(json.error || `HTTP ${res.status}`);
-        status.textContent = `Connected to Angel One as ${json.data.clientCode}.`;
-        status.className = 'hint up';
+        const s = await call('status');
+        if (s.connected) {
+          status.textContent = `Connected to Upstox as ${s.userName || s.userId}. Live prices are on.`;
+          status.className = 'hint up';
+          loginBtn.hidden = true;
+        } else {
+          status.textContent = s.expired
+            ? 'Backend OK, but today\'s Upstox session has ended. Log in again (Upstox sessions end every night around 3:30 AM).'
+            : 'Backend OK. Log in with Upstox to turn on live prices.';
+          status.className = 'hint';
+          loginBtn.hidden = false;
+        }
       } catch (e) {
         status.textContent = `Connection failed: ${e.message}`;
         status.className = 'hint down';
       }
     };
 
-    fill(dlg, 
+    fill(dlg,
       h('div', { class: 'd-head' }, h('h2', {}, 'Settings'), h('button', { class: 'btn ghost icon', 'aria-label': 'Close', onclick: () => dlg.close() }, '✕')),
       h('div', { class: 'd-body' },
-        h('div', { class: 'section-title' }, 'NSE / BSE data — Angel One SmartAPI'),
-        h('p', { class: 'muted' }, 'Your Angel One login stays in your Supabase backend, never in this page. Only someone with the access key below can load NSE/BSE data through it, which keeps exchange data private to you.'),
-        h('label', { class: 'field' }, 'Backend function URL', url),
-        h('label', { class: 'field' }, 'Supabase anon key', anon),
+        h('div', { class: 'section-title' }, 'NSE / BSE data — Upstox'),
+        h('p', { class: 'muted' }, 'Your Upstox login and API secret stay in your Supabase backend, never in this page. Only someone with the access key below can load NSE/BSE data through it, which keeps exchange data private to you.'),
         h('label', { class: 'field' }, 'Access key', access),
-        h('div', { class: 'st-row' }, h('button', { class: 'btn', onclick: test }, 'Test connection'), status),
-        h('p', { class: 'hint' }, 'These are saved in this browser only.'),
+        h('div', { class: 'st-row' }, h('button', { class: 'btn', onclick: check }, 'Check connection'), loginBtn),
+        status,
+        h('details', {},
+          h('summary', { class: 'hint' }, 'Backend details'),
+          h('div', { class: 'd-body', style: 'padding:8px 0 0' },
+            h('label', { class: 'field' }, 'Backend function URL', url),
+            h('label', { class: 'field' }, 'Supabase publishable key', anon))),
+        h('p', { class: 'hint' }, 'Saved in this browser only.'),
 
         h('div', { class: 'section-title' }, 'Paper trading'),
         h('label', { class: 'field' }, 'Commission per fill (%)', commission),
@@ -70,6 +76,7 @@ export function initSettings(app) {
         h('button', { class: 'btn', onclick: () => dlg.close() }, 'Cancel'),
         h('button', { class: 'btn primary', onclick: () => { save(); dlg.close(); toast('Settings saved', 'ok'); app.load(); } }, 'Save')),
     );
+    if (cfg.accessKey) check();
   }
 
   const open = () => { render(); dlg.showModal(); };

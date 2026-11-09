@@ -1,7 +1,7 @@
 // Left sidebar: market tabs and a live watchlist per market.
 import { $, h, store, fmtPrice, fmtPct, clsUpDown, fill } from '../util.js';
 import { MARKETS, getWatchlist, setWatchlist, prices, symId } from '../data/markets.js';
-import { isConfigured as angelConfigured } from '../data/angel.js';
+import { isConfigured as upstoxConfigured, status as upstoxStatus, LOGIN_URL } from '../data/upstox.js';
 
 export function initWatchlist(app) {
   const root = $('#watchlist');
@@ -11,17 +11,22 @@ export function initWatchlist(app) {
   function render() {
     const list = getWatchlist(market);
     rows.clear();
-    const needsAngel = (market === 'nse' || market === 'bse') && !angelConfigured();
+    const indian = market === 'nse' || market === 'bse';
+    const needsKey = indian && !upstoxConfigured();
+    const needsLogin = indian && !needsKey && upstoxStatus.needsLogin;
     fill(root, 
       h('div', { class: 'wl-tabs', role: 'tablist' }, ...Object.values(MARKETS).map((m) => h('button', {
         role: 'tab', class: m.id === market ? 'active' : '',
         onclick: () => { market = m.id; store.set('wlMarket', market); render(); },
       }, m.label))),
       h('div', { class: 'wl-note' },
-        h('span', {}, needsAngel ? 'Not connected' : MARKETS[market].note),
+        h('span', {}, needsKey ? 'Not connected' : needsLogin ? 'Upstox session ended' : MARKETS[market].note),
         h('button', { class: 'btn small', onclick: () => app.emit('open-search', market) }, '+ Add')),
-      needsAngel
-        ? h('div', { class: 'wl-note' }, h('button', { class: 'btn small primary', onclick: () => app.emit('open-settings') }, 'Connect Angel One'))
+      needsKey
+        ? h('div', { class: 'wl-note' }, h('button', { class: 'btn small primary', onclick: () => app.emit('open-settings') }, 'Connect Upstox'))
+        : null,
+      needsLogin
+        ? h('div', { class: 'wl-note' }, h('a', { class: 'btn small primary', href: LOGIN_URL }, 'Log in with Upstox'))
         : null,
       ...list.map((s) => {
         const id = symId(s);
@@ -73,6 +78,7 @@ export function initWatchlist(app) {
     for (const [id, r] of rows) r.row.classList.toggle('active', id === symId(sym));
   });
   app.on('watchlist-changed', render);
-  app.on('angel-config', () => { render(); prices.refresh(); });
+  app.on('broker-config', () => { render(); prices.refresh(); });
+  upstoxStatus.on('change', render);
   render();
 }
